@@ -16,7 +16,20 @@
       "Bash(curl -s -o /dev/null -w \"%{redirect_url}\\\\n\" \"http://localhost:8080/go?url=example.com\")",
       "Bash(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com','utf8'\\).toString\\('base64url'\\)\\)\")",
       "Bash(curl -s http://localhost:8080/p/__TRACKED_VAR__)",
-      "Bash(curl -s http://localhost:8080/__proxy__/client.js)"
+      "Bash(curl -s http://localhost:8080/__proxy__/client.js)",
+      "Read(//c/Users/test123/Downloads/**)",
+      "Bash(magick -version)",
+      "Bash(python -c \"import PIL; print\\('Pillow', PIL.__version__\\)\")",
+      "Bash(mkdir -p assets)",
+      "Bash(python -)",
+      "Bash(curl -s http://localhost:8080/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{content_type}\\\\n\" http://localhost:8080/favicon.ico)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{content_type}\\\\n\" http://localhost:8080/assets/icon-192.png)",
+      "Bash(curl -s http://localhost:8080/manifest.webmanifest)",
+      "Bash(python -c \"import sys,json; m=json.load\\(sys.stdin\\); print\\(m['name'], '| icons:', len\\(m['icons']\\)\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/apple-touch-icon.png)",
+      "Bash(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com'\\).toString\\('base64url'\\)\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:8080/p/$\\(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com'\\).toString\\('base64url'\\)\\)\"\\)\")"
     ]
   }
 }

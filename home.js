@@ -3,13 +3,20 @@ export const HOME_PAGE = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>⚡ Ultra Proxy</title>
+<title>🦫 カピバラproxy</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="カピバラproxy">
 <style>
   *{box-sizing:border-box}
   body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
        font-family:system-ui,'Segoe UI',sans-serif;
        background:radial-gradient(circle at 30% 20%,#1e293b,#0f172a 60%,#020617);color:#e2e8f0}
-  .logo{font-size:64px;margin-bottom:8px}
+  .logo{margin-bottom:12px;border-radius:24px;background:#f8fafc;padding:6px;
+        box-shadow:0 8px 30px rgba(0,0,0,.35)}
   h1{margin:0 0 4px;font-size:34px;font-weight:800;letter-spacing:-1px}
   p.sub{margin:0 0 32px;color:#94a3b8}
   form{display:flex;width:min(640px,90vw);gap:8px}
@@ -27,9 +34,9 @@ export const HOME_PAGE = `<!DOCTYPE html>
 </style>
 </head>
 <body>
-  <div class="logo">⚡</div>
-  <h1>Ultra Proxy</h1>
-  <p class="sub">URLを入れるとプロキシ経由で表示します</p>
+  <img class="logo" src="/assets/icon-192.png" alt="capybara" width="120" height="120">
+  <h1>カピバラproxy</h1>
+  <p class="sub">のんびり最強。URLを入れるとプロキシ経由で表示します</p>
   <form action="/go" method="get">
     <input name="url" autofocus placeholder="example.com または https://..." autocomplete="off">
     <button type="submit">Go</button>

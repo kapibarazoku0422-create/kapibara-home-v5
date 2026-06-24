@@ -2,6 +2,9 @@
 // URL書き換え型フォワードプロキシ。/p/<url> でプロキシ経由表示。
 import http from 'node:http';
 import zlib from 'node:zlib';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 import { request } from 'undici';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -10,6 +13,41 @@ import { CLIENT_SCRIPT } from './client.js';
 import { HOME_PAGE } from './home.js';
 
 const PORT = process.env.PORT || 8080;
+const __dir = path.dirname(fileURLToPath(import.meta.url));
+const ASSET_DIR = path.join(__dir, 'assets');
+
+// PWA マニフェスト
+const MANIFEST = JSON.stringify({
+  name: 'カピバラproxy',
+  short_name: 'カピバラproxy',
+  description: 'のんびり最強の web proxy',
+  start_url: '/',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#0f172a',
+  theme_color: '#0f172a',
+  icons: [
+    { src: '/assets/icon-192.png', sizes: '192x192', type: 'image/png' },
+    { src: '/assets/icon-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/assets/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+  ],
+});
+
+const MIME = {
+  '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml',
+  '.json': 'application/json', '.webmanifest': 'application/manifest+json',
+};
+function serveAsset(res, name) {
+  const file = path.join(ASSET_DIR, path.basename(name));
+  fs.readFile(file, (err, data) => {
+    if (err) { res.writeHead(404); return res.end('not found'); }
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
+      'cache-control': 'public, max-age=86400',
+    });
+    res.end(data);
+  });
+}
 
 // --- 簡易メモリキャッシュ（静的リソース高速化） -----------------------
 const CACHE = new Map();
@@ -54,6 +92,16 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(HOME_PAGE);
   }
+  // PWA / アイコン
+  if (url === '/manifest.webmanifest' || url === '/manifest.json') {
+    res.writeHead(200, { 'content-type': 'application/manifest+json; charset=utf-8' });
+    return res.end(MANIFEST);
+  }
+  if (url === '/favicon.ico') return serveAsset(res, 'favicon.ico');
+  if (url === '/apple-touch-icon.png' || url === '/apple-touch-icon-precomposed.png')
+    return serveAsset(res, 'apple-touch-icon.png');
+  if (url.startsWith('/assets/')) return serveAsset(res, url.slice('/assets/'.length));
+
   // クライアント傍受スクリプト
   if (url === '/__proxy__/client.js') {
     res.writeHead(200, {
@@ -232,5 +280,5 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  ⚡ Ultra Proxy 起動: http://0.0.0.0:${PORT}\n`);
+  console.log(`\n  🦫 カピバラproxy 起動: http://0.0.0.0:${PORT}\n`);
 });
