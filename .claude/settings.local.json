@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node -v)",
+      "PowerShell(npm -v)",
+      "PowerShell(npm install 2>&1)",
+      "Bash(node server.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} -> %{redirect_url}\" \"http://localhost:8080/go?url=example.com\")",
+      "Bash(curl -s \"http://localhost:8080/p/https://example.com\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/__proxy__/client.js)",
+      "Bash(curl -s \"http://localhost:8080/p/https://en.wikipedia.org/wiki/Proxy_server\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8080/p/https://en.wikipedia.org/wiki/Proxy_server\")",
+      "Bash(npm install *)",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(curl -s -o /dev/null -w \"%{redirect_url}\\\\n\" \"http://localhost:8080/go?url=example.com\")",
+      "Bash(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com','utf8'\\).toString\\('base64url'\\)\\)\")",
+      "Bash(curl -s http://localhost:8080/p/__TRACKED_VAR__)",
+      "Bash(curl -s http://localhost:8080/__proxy__/client.js)"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+# Render Blueprint — TLS終端・HTTP/2・WebSocketはRenderのエッジが自動対応
+services:
+  - type: web
+    name: ultra-proxy
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
