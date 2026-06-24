@@ -9,7 +9,26 @@ import { Readable } from 'node:stream';
 import { request } from 'undici';
 import { WebSocketServer, WebSocket } from 'ws';
 import { rewriteHtml, rewriteCss, encodeProxyUrl, decodeProxyUrl, PREFIX } from './rewrite.js';
-import { safeAcceptEncoding, deriveRefererOrigin, namespaceSetCookies, upstreamCookie } from './net.js';
+import { safeAcceptEncoding, deriveRefererOrigin, namespaceSetCookies, upstreamCookie, assertPublicHost, decodeBody } from './net.js';
+
+const MAX_BODY = 25 * 1024 * 1024; // リクエストボディ上限 25MB
+
+// クライアントの Accept-Encoding に応じて圧縮して送信
+function sendBody(req, res, status, headers, buf) {
+  const ae = (req.headers['accept-encoding'] || '').toLowerCase();
+  const out = { ...headers };
+  let body = buf;
+  if (buf.length > 512 && ae.includes('br')) {
+    // 品質5: 圧縮率と速度のバランス（既定の11は遅すぎる）
+    body = zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } });
+    out['content-encoding'] = 'br';
+  } else if (buf.length > 512 && ae.includes('gzip')) {
+    body = zlib.gzipSync(buf, { level: 6 }); out['content-encoding'] = 'gzip';
+  }
+  out['content-length'] = body.length;
+  res.writeHead(status, out);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
 import { CLIENT_SCRIPT } from './client.js';
 import { HOME_PAGE } from './home.js';
 
@@ -144,15 +163,16 @@ async function handleProxy(req, res) {
   let targetUrl;
   try { targetUrl = new URL(target); } catch { res.writeHead(400); return res.end('bad url'); }
 
+  // SSRF対策: 内部アドレス宛を拒否
+  try { await assertPublicHost(targetUrl.hostname); }
+  catch { res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('Blocked: internal address not allowed'); }
+
   const method = req.method || 'GET';
   const cacheKey = method === 'GET' ? targetUrl.href : null;
 
   if (cacheKey) {
     const hit = cacheGet(cacheKey);
-    if (hit) {
-      res.writeHead(hit.status, hit.headers);
-      return res.end(hit.body);
-    }
+    if (hit) return sendBody(req, res, hit.status, hit.headers, hit.body);
   }
 
   // ヘッダ転送（hop-by-hop / host / cookie / 後で個別設定するものを除く）
@@ -190,7 +210,12 @@ async function handleProxy(req, res) {
   let body;
   if (method !== 'GET' && method !== 'HEAD') {
     const chunks = [];
-    for await (const c of req) chunks.push(c);
+    let size = 0;
+    for await (const c of req) {
+      size += c.length;
+      if (size > MAX_BODY) { res.writeHead(413); return res.end('payload too large'); }
+      chunks.push(c);
+    }
     body = Buffer.concat(chunks);
   }
 
@@ -245,14 +270,16 @@ async function handleProxy(req, res) {
     for await (const c of upstream.body) chunks.push(c);
     let buf = Buffer.concat(chunks);
     buf = decompress(buf, enc);
-    let text = buf.toString('utf-8');
+    // 文字コードを判定してデコード（Shift_JIS/EUC-JP等）
+    let text = decodeBody(buf, h['content-type']);
     text = isHtml ? rewriteHtml(text, targetUrl.href) : rewriteCss(text, targetUrl.href);
     const outBuf = Buffer.from(text, 'utf-8');
+    // 書き換え済みなので元のエンコーディング/長さ宣言は破棄（sendBodyが再設定）
+    delete outHeaders['content-encoding'];
+    delete outHeaders['content-length'];
     outHeaders['content-type'] = isHtml ? 'text/html; charset=utf-8' : 'text/css; charset=utf-8';
-    outHeaders['content-length'] = outBuf.length;
     if (cacheKey && isCss) cacheSet(cacheKey, { status, headers: outHeaders, body: outBuf });
-    res.writeHead(status, outHeaders);
-    return res.end(outBuf);
+    return sendBody(req, res, status, outHeaders, outBuf);
   }
 
   // それ以外（画像/JS/フォント等）はそのままストリーム（エンコーディング維持）

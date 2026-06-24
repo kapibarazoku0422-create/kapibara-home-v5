@@ -58,8 +58,23 @@ const NONCE_RE = /\snonce=(["'])[^"']*\1/ig;
 const CSS_URL_RE = /url\(\s*(["']?)([^"')]+)\1\s*\)/ig;
 const CSS_IMPORT_RE = /@import\s+(["'])([^"']+)\1/ig;
 
+const BASE_TAG_RE = /<base\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>/i;
+const META_CHARSET_RE = /<meta[^>]+charset\s*=\s*["']?\s*[\w-]+["']?[^>]*>/ig;
+const META_HTTP_CT_RE = /<meta[^>]+http-equiv=["']?content-type["']?[^>]*>/ig;
+
 export function rewriteHtml(html, base) {
   const cache = new Map(); // ページ内メモ化
+
+  // <base href> があれば相対URL解決の基準にし、タグ自体は除去（プロキシ下で誤動作するため）
+  const bm = BASE_TAG_RE.exec(html);
+  if (bm) {
+    try { base = new URL(bm[2], base).href; } catch {}
+    html = html.replace(BASE_TAG_RE, '');
+  }
+
+  // 文字コードは常にutf-8で出力するので meta の宣言もutf-8へ統一
+  html = html.replace(META_HTTP_CT_RE, '');
+  html = html.replace(META_CHARSET_RE, '<meta charset="utf-8">');
 
   // CSP / SRI を無効化
   html = html.replace(CSP_META_RE, '');

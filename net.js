@@ -1,5 +1,68 @@
 // ヘッダ/Cookie の正規化ロジック（ブラウザらしい振る舞い + サイト別Cookie分離）
+import dns from 'node:dns/promises';
+import netmod from 'node:net';
 import { decodeProxyUrl, PREFIX } from './rewrite.js';
+
+// --- SSRF対策: プライベート/ループバック/リンクローカル宛を拒否 -----------
+function ipToInt(ip) {
+  return ip.split('.').reduce((a, o) => (a << 8) + (parseInt(o, 10) & 255), 0) >>> 0;
+}
+function isPrivateV4(ip) {
+  const n = ipToInt(ip);
+  const inR = (base, bits) => (n >>> (32 - bits)) === (ipToInt(base) >>> (32 - bits));
+  return inR('10.0.0.0', 8) || inR('172.16.0.0', 12) || inR('192.168.0.0', 16) ||
+         inR('127.0.0.0', 8) || inR('169.254.0.0', 16) || inR('0.0.0.0', 8) ||
+         inR('100.64.0.0', 10) || inR('192.0.0.0', 24) || inR('255.255.255.255', 32);
+}
+function isPrivateV6(ip) {
+  const a = ip.toLowerCase().replace(/^\[|\]$/g, '');
+  if (a === '::1' || a === '::') return true;
+  if (a.startsWith('fe80') || a.startsWith('fc') || a.startsWith('fd')) return true; // link-local / ULA
+  // IPv4-mapped (::ffff:a.b.c.d)
+  const m = a.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (m) return isPrivateV4(m[1]);
+  return false;
+}
+function isBlockedIP(ip) {
+  const t = netmod.isIP(ip);
+  if (t === 4) return isPrivateV4(ip);
+  if (t === 6) return isPrivateV6(ip);
+  return true; // 判定不能は拒否
+}
+
+// 対象ホストが公開アドレスに解決できるか検証（DNSリバインディングも遮断）
+export async function assertPublicHost(host) {
+  // ホストがIPリテラルならそのまま判定
+  if (netmod.isIP(host)) {
+    if (isBlockedIP(host)) throw new Error('blocked address');
+    return;
+  }
+  let addrs;
+  try { addrs = await dns.lookup(host, { all: true }); }
+  catch { throw new Error('dns resolution failed'); }
+  if (!addrs.length) throw new Error('no address');
+  for (const { address } of addrs) {
+    if (isBlockedIP(address)) throw new Error('blocked address');
+  }
+}
+
+// --- 文字コード判定とデコード（Shift_JIS/EUC-JP等の日本語サイト対応） -------
+export function decodeBody(buf, ctype) {
+  let cs = (/charset=["']?\s*([\w-]+)/i.exec(ctype || '') || [])[1];
+  if (!cs) {
+    // 先頭2KBを latin1 として覗き、metaタグの charset を拾う
+    const head = buf.subarray(0, 2048).toString('latin1');
+    const m = /<meta[^>]+charset=["']?\s*([\w-]+)/i.exec(head) ||
+              /charset=["']?\s*([\w-]+)/i.exec(head);
+    if (m) cs = m[1];
+  }
+  cs = (cs || 'utf-8').trim().toLowerCase();
+  if (cs === 'utf-8' || cs === 'utf8' || cs === 'us-ascii' || cs === 'ascii') {
+    return buf.toString('utf-8');
+  }
+  try { return new TextDecoder(cs).decode(buf); }
+  catch { return buf.toString('utf-8'); }
+}
 
 // --- Accept-Encoding: クライアントを尊重しつつ復号可能なものに限定 -------
 const DECODABLE = ['gzip', 'deflate', 'br'];

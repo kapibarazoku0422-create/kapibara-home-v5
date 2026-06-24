@@ -39,7 +39,10 @@
       "Bash(node --input-type=module -e ' *)",
       "Bash(cp /tmp/bench.mjs ./_bench.mjs)",
       "Bash(node _bench.mjs)",
-      "Bash(rm -f ./_bench.mjs)"
+      "Bash(rm -f ./_bench.mjs)",
+      "Bash(cat)",
+      "Bash(node _t.mjs)",
+      "Bash(rm -f _t.mjs)"
     ]
   }
 }
