@@ -9,64 +9,72 @@ export function encodeProxyUrl(absUrl) {
 // プロキシのパスセグメント -> 元の絶対URL
 export function decodeProxyUrl(seg) {
   // クエリやハッシュが付いていても落とす（基本付かない想定）
-  const clean = seg.replace(/[?#].*$/, '');
+  const q = seg.search(/[?#]/);
+  const clean = q === -1 ? seg : seg.slice(0, q);
   return Buffer.from(clean, 'base64url').toString('utf8');
 }
 
-// 相対/絶対URLを base で解決し、プロキシ経由URLに変換
-function toProxy(u, base) {
+// 書き換え不要スキームの先頭1文字での粗フィルタ用
+const SKIP_RE = /^(?:data:|blob:|javascript:|mailto:|tel:|about:|#)/i;
+
+// 相対/絶対URLを base で解決し、プロキシ経由URLに変換（cacheでメモ化）
+function toProxy(u, base, cache) {
   if (!u) return u;
+  // 同一ページ内の重複URLはキャッシュ命中で URL/Buffer 処理を丸ごとスキップ
+  const cached = cache.get(u);
+  if (cached !== undefined) return cached;
+
+  let out = u;
   const s = u.trim();
-  if (s === '' ) return u;
-  // 書き換え不要なスキーム
-  if (/^(data:|blob:|javascript:|mailto:|tel:|about:|#)/i.test(s)) return u;
-  if (s.startsWith(PREFIX)) return u; // 二重変換防止
-  try {
-    const abs = new URL(s, base).href;
-    return encodeProxyUrl(abs);
-  } catch {
-    return u;
+  if (s !== '' && !SKIP_RE.test(s) && !s.startsWith(PREFIX)) {
+    try {
+      out = encodeProxyUrl(new URL(s, base).href);
+    } catch { /* keep original */ }
   }
+  cache.set(u, out);
+  return out;
 }
 
 // srcset (a.jpg 1x, b.jpg 2x) を変換
-function rewriteSrcset(val, base) {
+function rewriteSrcset(val, base, cache) {
   return val.split(',').map(part => {
     const m = part.trim().match(/^(\S+)(\s+.+)?$/);
     if (!m) return part;
-    return toProxy(m[1], base) + (m[2] || '');
+    return toProxy(m[1], base, cache) + (m[2] || '');
   }).join(', ');
 }
 
+// 属性ごとの正規表現を一度だけコンパイル（毎ページの new RegExp を排除）
 const URL_ATTRS = ['href', 'src', 'poster', 'action', 'formaction', 'data-src', 'data-href', 'background'];
+const ATTR_RE = URL_ATTRS.map(attr =>
+  new RegExp(`(<[^>]+\\b${attr}\\s*=\\s*)(["'])(.*?)\\2`, 'ig'));
+const SRCSET_RE = /(<[^>]+\bsrcset\s*=\s*)(["'])(.*?)\2/ig;
+const META_REFRESH_RE = /(<meta[^>]+content\s*=\s*)(["'])(\s*\d+\s*;\s*url=)([^"']+)\2/ig;
+const STYLE_ATTR_RE = /(\bstyle\s*=\s*)(["'])(.*?)\2/ig;
+const STYLE_BLOCK_RE = /(<style[^>]*>)([\s\S]*?)(<\/style>)/ig;
+const CSP_META_RE = /<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/ig;
+const INTEGRITY_RE = /\sintegrity=(["'])[^"']*\1/ig;
+const NONCE_RE = /\snonce=(["'])[^"']*\1/ig;
+const CSS_URL_RE = /url\(\s*(["']?)([^"')]+)\1\s*\)/ig;
+const CSS_IMPORT_RE = /@import\s+(["'])([^"']+)\1/ig;
 
 export function rewriteHtml(html, base) {
+  const cache = new Map(); // ページ内メモ化
+
   // CSP / SRI を無効化
-  html = html.replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/ig, '');
-  html = html.replace(/\sintegrity=(["'])[^"']*\1/ig, '');
-  html = html.replace(/\snonce=(["'])[^"']*\1/ig, '');
+  html = html.replace(CSP_META_RE, '');
+  html = html.replace(INTEGRITY_RE, '');
+  html = html.replace(NONCE_RE, '');
 
   // 各URL属性
-  for (const attr of URL_ATTRS) {
-    const re = new RegExp(`(<[^>]+\\b${attr}\\s*=\\s*)(["'])(.*?)\\2`, 'ig');
-    html = html.replace(re, (m, pre, q, val) => pre + q + toProxy(val, base) + q);
+  for (const re of ATTR_RE) {
+    html = html.replace(re, (m, pre, q, val) => pre + q + toProxy(val, base, cache) + q);
   }
 
-  // srcset
-  html = html.replace(/(<[^>]+\bsrcset\s*=\s*)(["'])(.*?)\2/ig,
-    (m, pre, q, val) => pre + q + rewriteSrcset(val, base) + q);
-
-  // meta refresh
-  html = html.replace(/(<meta[^>]+content\s*=\s*)(["'])(\s*\d+\s*;\s*url=)([^"']+)\2/ig,
-    (m, pre, q, head, u) => pre + q + head + toProxy(u, base) + q);
-
-  // インラインstyle属性
-  html = html.replace(/(\bstyle\s*=\s*)(["'])(.*?)\2/ig,
-    (m, pre, q, val) => pre + q + rewriteCss(val, base) + q);
-
-  // <style>ブロック
-  html = html.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/ig,
-    (m, open, css, close) => open + rewriteCss(css, base) + close);
+  html = html.replace(SRCSET_RE, (m, pre, q, val) => pre + q + rewriteSrcset(val, base, cache) + q);
+  html = html.replace(META_REFRESH_RE, (m, pre, q, head, u) => pre + q + head + toProxy(u, base, cache) + q);
+  html = html.replace(STYLE_ATTR_RE, (m, pre, q, val) => pre + q + rewriteCssWith(val, base, cache) + q);
+  html = html.replace(STYLE_BLOCK_RE, (m, open, css, close) => open + rewriteCssWith(css, base, cache) + close);
 
   // クライアント傍受スクリプトを注入
   const inject = `<script src="/__proxy__/client.js" data-base="${base}"></script>`;
@@ -80,11 +88,12 @@ export function rewriteHtml(html, base) {
   return html;
 }
 
-export function rewriteCss(css, base) {
-  // url(...) と @import "..."
-  css = css.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/ig,
-    (m, q, u) => `url(${q}${toProxy(u, base)}${q})`);
-  css = css.replace(/@import\s+(["'])([^"']+)\1/ig,
-    (m, q, u) => `@import ${q}${toProxy(u, base)}${q}`);
+function rewriteCssWith(css, base, cache) {
+  css = css.replace(CSS_URL_RE, (m, q, u) => `url(${q}${toProxy(u, base, cache)}${q})`);
+  css = css.replace(CSS_IMPORT_RE, (m, q, u) => `@import ${q}${toProxy(u, base, cache)}${q}`);
   return css;
+}
+
+export function rewriteCss(css, base) {
+  return rewriteCssWith(css, base, new Map());
 }

@@ -4,16 +4,28 @@ export const CLIENT_SCRIPT = `(function(){
   var me=document.currentScript;
   var BASE=(me&&me.getAttribute('data-base'))||location.href;
 
-  // UTF-8対応 Base64url
+  // UTF-8対応 Base64url（ASCII高速パス + メモ化）
+  var ASCII=/^[\\x00-\\x7F]*$/;
+  var encCache=new Map(), decCache=new Map();
   function b64enc(s){
-    return btoa(unescape(encodeURIComponent(s))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+    var hit=encCache.get(s); if(hit!==undefined) return hit;
+    // URLの大半はASCII。その場合は重い encodeURIComponent を省略
+    var bin=ASCII.test(s)?s:unescape(encodeURIComponent(s));
+    var r=btoa(bin).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+    if(encCache.size>2000) encCache.clear();
+    encCache.set(s,r); return r;
   }
   function b64dec(s){
+    var hit=decCache.get(s); if(hit!==undefined) return hit;
+    var r=null;
     try{
-      s=s.replace(/-/g,'+').replace(/_/g,'/');
-      while(s.length%4) s+='=';
-      return decodeURIComponent(escape(atob(s)));
-    }catch(e){ return null; }
+      var t=s.replace(/-/g,'+').replace(/_/g,'/');
+      while(t.length%4) t+='=';
+      var bin=atob(t);
+      r=ASCII.test(bin)?bin:decodeURIComponent(escape(bin));
+    }catch(e){ r=null; }
+    if(decCache.size>2000) decCache.clear();
+    decCache.set(s,r); return r;
   }
 
   // 任意のURLを「元サイト基準の絶対URL」に戻す

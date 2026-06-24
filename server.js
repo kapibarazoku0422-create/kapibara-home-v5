@@ -9,6 +9,7 @@ import { Readable } from 'node:stream';
 import { request } from 'undici';
 import { WebSocketServer, WebSocket } from 'ws';
 import { rewriteHtml, rewriteCss, encodeProxyUrl, decodeProxyUrl, PREFIX } from './rewrite.js';
+import { safeAcceptEncoding, deriveRefererOrigin, namespaceSetCookies, upstreamCookie } from './net.js';
 import { CLIENT_SCRIPT } from './client.js';
 import { HOME_PAGE } from './home.js';
 
@@ -154,17 +155,36 @@ async function handleProxy(req, res) {
     }
   }
 
-  // ヘッダ転送（hop-by-hop と host を除く）
+  // ヘッダ転送（hop-by-hop / host / cookie / 後で個別設定するものを除く）
   const fwdHeaders = {};
   for (const [k, v] of Object.entries(req.headers)) {
     const lk = k.toLowerCase();
     if (HOP_BY_HOP.has(lk) || lk === 'host' || lk === 'referer' || lk === 'origin' ||
-        lk === 'accept-encoding') continue;
+        lk === 'cookie' || lk === 'accept-encoding') continue;
     fwdHeaders[k] = v;
   }
   fwdHeaders['host'] = targetUrl.host;
   fwdHeaders['user-agent'] = req.headers['user-agent'] || UA;
-  fwdHeaders['accept-encoding'] = 'gzip, deflate, br';
+
+  // 圧縮: クライアントの Accept-Encoding を尊重（復号可能なものだけ）
+  fwdHeaders['accept-encoding'] = safeAcceptEncoding(req.headers['accept-encoding']);
+
+  // ブラウザらしさ: 不足しがちなヘッダは妥当な既定値を補う
+  if (!fwdHeaders['accept']) {
+    fwdHeaders['accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+  }
+  if (!fwdHeaders['accept-language']) {
+    fwdHeaders['accept-language'] = 'ja,en-US;q=0.9,en;q=0.8';
+  }
+
+  // Referer / Origin を元サイト基準に復元
+  const ro = deriveRefererOrigin(req.headers, targetUrl);
+  if (ro.referer) fwdHeaders['referer'] = ro.referer;
+  if (ro.origin) fwdHeaders['origin'] = ro.origin;
+
+  // Cookie: この対象ホスト宛のものだけを抽出してプレフィックスを外す
+  const uc = upstreamCookie(req.headers['cookie'], targetUrl.host);
+  if (uc) fwdHeaders['cookie'] = uc;
 
   // リクエストボディ収集（POST等）
   let body;
@@ -192,10 +212,12 @@ async function handleProxy(req, res) {
   const status = upstream.statusCode;
   const h = upstream.headers;
 
-  // リダイレクトは Location を書き換えて自前で返す
+  // リダイレクトは Location を書き換えて自前で返す（Set-Cookieは保持）
   if (status >= 300 && status < 400 && h.location) {
     const loc = new URL(h.location, targetUrl.href).href;
-    res.writeHead(status, { location: encodeProxyUrl(loc) });
+    const redirHeaders = { location: encodeProxyUrl(loc) };
+    if (h['set-cookie']) redirHeaders['set-cookie'] = namespaceSetCookies(h['set-cookie'], targetUrl.host);
+    res.writeHead(status, redirHeaders);
     return res.end();
   }
 
@@ -211,11 +233,9 @@ async function handleProxy(req, res) {
     if (HOP_BY_HOP.has(k.toLowerCase())) continue;
     outHeaders[k] = v;
   }
-  // set-cookie はパス制約を外して透過（簡易）
+  // set-cookie はサイト別に名前空間化（複数サイトの混線を防止）
   if (h['set-cookie']) {
-    const cookies = Array.isArray(h['set-cookie']) ? h['set-cookie'] : [h['set-cookie']];
-    outHeaders['set-cookie'] = cookies.map(c =>
-      c.replace(/;\s*domain=[^;]+/ig, '').replace(/;\s*secure/ig, '').replace(/;\s*samesite=[^;]+/ig, ''));
+    outHeaders['set-cookie'] = namespaceSetCookies(h['set-cookie'], targetUrl.host);
   }
   outHeaders['access-control-allow-origin'] = '*';
 

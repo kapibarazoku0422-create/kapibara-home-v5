@@ -29,7 +29,17 @@
       "Bash(python -c \"import sys,json; m=json.load\\(sys.stdin\\); print\\(m['name'], '| icons:', len\\(m['icons']\\)\\)\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/apple-touch-icon.png)",
       "Bash(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com'\\).toString\\('base64url'\\)\\)\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:8080/p/$\\(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com'\\).toString\\('base64url'\\)\\)\"\\)\")"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:8080/p/$\\(node -e \"process.stdout.write\\(Buffer.from\\('https://example.com'\\).toString\\('base64url'\\)\\)\"\\)\")",
+      "Bash(cd \"C:/Users/tkhr0/OneDrive/Desktop/proxy\")",
+      "Bash(sleep 1)",
+      "Bash(sleep 1.5)",
+      "Bash(echo \"example status:\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}\\\\n' http://localhost:8080/p/__TRACKED_VAR__)",
+      "Bash(node -)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(cp /tmp/bench.mjs ./_bench.mjs)",
+      "Bash(node _bench.mjs)",
+      "Bash(rm -f ./_bench.mjs)"
     ]
   }
 }
