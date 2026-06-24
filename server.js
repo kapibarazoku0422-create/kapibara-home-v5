@@ -10,8 +10,11 @@ import { request } from 'undici';
 import { WebSocketServer, WebSocket } from 'ws';
 import { rewriteHtml, rewriteCss, encodeProxyUrl, decodeProxyUrl, PREFIX } from './rewrite.js';
 import { safeAcceptEncoding, deriveRefererOrigin, namespaceSetCookies, upstreamCookie, assertPublicHost, decodeBody } from './net.js';
+import { CLIENT_SCRIPT } from './client.js';
+import { HOME_PAGE } from './home.js';
 
 const MAX_BODY = 25 * 1024 * 1024; // リクエストボディ上限 25MB
+const PORT = process.env.PORT || 8080;
 
 // クライアントの Accept-Encoding に応じて圧縮して送信
 function sendBody(req, res, status, headers, buf) {
@@ -26,13 +29,10 @@ function sendBody(req, res, status, headers, buf) {
     body = zlib.gzipSync(buf, { level: 6 }); out['content-encoding'] = 'gzip';
   }
   out['content-length'] = body.length;
+  out['vary'] = 'Accept-Encoding';
   res.writeHead(status, out);
   res.end(req.method === 'HEAD' ? undefined : body);
 }
-import { CLIENT_SCRIPT } from './client.js';
-import { HOME_PAGE } from './home.js';
-
-const PORT = process.env.PORT || 8080;
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const ASSET_DIR = path.join(__dir, 'assets');
 
@@ -82,7 +82,7 @@ function cacheGet(key) {
   return e;
 }
 function cacheSet(key, val) {
-  if (CACHE.size >= CACHE_MAX) CACHE.delete(CACHE.next().value);
+  if (CACHE.size >= CACHE_MAX) CACHE.delete(CACHE.keys().next().value); // 最古を退避
   CACHE.set(key, { ...val, t: Date.now() });
 }
 
@@ -278,7 +278,10 @@ async function handleProxy(req, res) {
     delete outHeaders['content-encoding'];
     delete outHeaders['content-length'];
     outHeaders['content-type'] = isHtml ? 'text/html; charset=utf-8' : 'text/css; charset=utf-8';
-    if (cacheKey && isCss) cacheSet(cacheKey, { status, headers: outHeaders, body: outBuf });
+    if (cacheKey && isCss) {
+      const { 'set-cookie': _sc, ...cacheable } = outHeaders; // 共有キャッシュにcookieを残さない
+      cacheSet(cacheKey, { status, headers: cacheable, body: outBuf });
+    }
     return sendBody(req, res, status, outHeaders, outBuf);
   }
 
@@ -291,7 +294,7 @@ async function handleProxy(req, res) {
 // --- WebSocket プロキシ -------------------------------------------------
 const wss = new WebSocketServer({ noServer: true });
 
-server.on('upgrade', (req, socket, head) => {
+server.on('upgrade', async (req, socket, head) => {
   if (!req.url.startsWith(PREFIX)) { socket.destroy(); return; }
   let original;
   try { original = decodeProxyUrl(req.url.slice(PREFIX.length)); }
@@ -302,9 +305,15 @@ server.on('upgrade', (req, socket, head) => {
   if (u.protocol === 'http:') u.protocol = 'ws:';
   else if (u.protocol === 'https:') u.protocol = 'wss:';
 
+  // SSRF対策: WS経由でも内部アドレスを拒否
+  try { await assertPublicHost(u.hostname); }
+  catch { socket.destroy(); return; }
+
   wss.handleUpgrade(req, socket, head, (client) => {
     const headers = {};
-    if (req.headers['cookie']) headers['cookie'] = req.headers['cookie'];
+    // Cookie はこの対象ホスト宛のみ抽出してプレフィックスを外す（漏洩/混線防止）
+    const uc = upstreamCookie(req.headers['cookie'], u.host);
+    if (uc) headers['cookie'] = uc;
     if (req.headers['user-agent']) headers['user-agent'] = req.headers['user-agent'];
     headers['origin'] = u.origin.replace(/^ws/, 'http');
 
