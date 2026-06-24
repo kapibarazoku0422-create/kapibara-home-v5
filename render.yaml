@@ -1,13 +1,15 @@
 # Render Blueprint — TLS終端・HTTP/2・WebSocketはRenderのエッジが自動対応
 services:
   - type: web
-    name: ultra-proxy
+    name: kapibara-proxy
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm run build   # client.src.js を難読化
     startCommand: npm start
     autoDeploy: true
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: PROXY_SECRET        # 起動ゲート。Renderが安全な値を自動生成
+        generateValue: true

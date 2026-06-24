@@ -1,10 +1,13 @@
 {
-  "name": "ultra-proxy",
+  "name": "kapibara-proxy",
   "version": "1.0.0",
-  "description": "Strongest web proxy - URL rewriting proxy with streaming",
+  "description": "カピバラproxy - URL rewriting web proxy (Proprietary, All Rights Reserved)",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
   "type": "module",
   "main": "server.js",
   "scripts": {
+    "build": "node build.js",
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
@@ -14,5 +17,8 @@
   "dependencies": {
     "undici": "^7.3.0",
     "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "terser": "^5.48.0"
   }
 }

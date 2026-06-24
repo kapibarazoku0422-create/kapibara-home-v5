@@ -1,4 +1,9 @@
-// URL書き換えロジック
+/*!
+ * カピバラproxy — URL書き換えロジック
+ * Copyright (c) 2026 kapibarazoku0422. All Rights Reserved.
+ * Proprietary and confidential. Unauthorized copying, modification, or use prohibited.
+ * See LICENSE. Watermark: KPBR-9f3a2c7e
+ */
 export const PREFIX = '/p/';
 
 // 絶対URL -> プロキシURL（Base64url難読化）

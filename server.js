@@ -1,5 +1,9 @@
-// Ultra Proxy - 最強 web proxy
-// URL書き換え型フォワードプロキシ。/p/<url> でプロキシ経由表示。
+/*!
+ * カピバラproxy — URL書き換え型 web proxy
+ * Copyright (c) 2026 kapibarazoku0422. All Rights Reserved.
+ * Proprietary and confidential. Unauthorized copying, modification, or use prohibited.
+ * See LICENSE. Watermark: KPBR-9f3a2c7e
+ */
 import http from 'node:http';
 import zlib from 'node:zlib';
 import fs from 'node:fs';
@@ -15,6 +19,14 @@ import { HOME_PAGE } from './home.js';
 
 const MAX_BODY = 25 * 1024 * 1024; // リクエストボディ上限 25MB
 const PORT = process.env.PORT || 8080;
+
+// --- 起動ゲート: 秘密の環境変数が無ければ起動拒否 ----------------------
+// （privateリポジトリ運用前提。素人のそのままコピーを動かさないための抑止）
+if (!process.env.PROXY_SECRET || process.env.PROXY_SECRET.length < 8) {
+  console.error('\n  [起動拒否] 環境変数 PROXY_SECRET (8文字以上) が未設定です。');
+  console.error('  例: PROXY_SECRET=your-long-secret npm start\n');
+  process.exit(1);
+}
 
 // クライアントの Accept-Encoding に応じて圧縮して送信
 function sendBody(req, res, status, headers, buf) {

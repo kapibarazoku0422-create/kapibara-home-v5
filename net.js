@@ -1,4 +1,9 @@
-// ヘッダ/Cookie の正規化ロジック（ブラウザらしい振る舞い + サイト別Cookie分離）
+/*!
+ * カピバラproxy — ヘッダ/Cookie 正規化 & SSRF/charset 処理
+ * Copyright (c) 2026 kapibarazoku0422. All Rights Reserved.
+ * Proprietary and confidential. Unauthorized copying, modification, or use prohibited.
+ * See LICENSE. Watermark: KPBR-9f3a2c7e
+ */
 import dns from 'node:dns/promises';
 import netmod from 'node:net';
 import { decodeProxyUrl, PREFIX } from './rewrite.js';

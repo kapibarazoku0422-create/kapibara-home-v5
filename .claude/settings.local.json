@@ -42,7 +42,11 @@
       "Bash(rm -f ./_bench.mjs)",
       "Bash(cat)",
       "Bash(node _t.mjs)",
-      "Bash(rm -f _t.mjs)"
+      "Bash(rm -f _t.mjs)",
+      "Bash(npm run *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(PROXY_SECRET=supersecret123 node server.js)",
+      "Read(//tmp/**)"
     ]
   }
 }

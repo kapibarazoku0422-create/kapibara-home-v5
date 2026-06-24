@@ -1,3 +1,8 @@
+/*!
+ * カピバラproxy — ホームページ
+ * Copyright (c) 2026 kapibarazoku0422. All Rights Reserved.
+ * Proprietary and confidential. See LICENSE. Watermark: KPBR-9f3a2c7e
+ */
 export const HOME_PAGE = `<!DOCTYPE html>
 <html lang="ja">
 <head>
