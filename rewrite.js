@@ -4,19 +4,21 @@
  * Proprietary and confidential. Unauthorized copying, modification, or use prohibited.
  * See LICENSE. Watermark: KPBR-9f3a2c7e
  */
+import { seal, unseal } from './seal.js';
+
 export const PREFIX = '/p/';
 
-// 絶対URL -> プロキシURL（Base64url難読化）
+// 絶対URL -> プロキシURL（AES-256-GCMで封印。鍵はサーバのみ）
 export function encodeProxyUrl(absUrl) {
-  return PREFIX + Buffer.from(absUrl, 'utf8').toString('base64url');
+  return PREFIX + seal(absUrl);
 }
 
-// プロキシのパスセグメント -> 元の絶対URL
+// プロキシのパスセグメント -> 元の絶対URL（改ざん時は例外）
 export function decodeProxyUrl(seg) {
   // クエリやハッシュが付いていても落とす（基本付かない想定）
   const q = seg.search(/[?#]/);
   const clean = q === -1 ? seg : seg.slice(0, q);
-  return Buffer.from(clean, 'base64url').toString('utf8');
+  return unseal(clean);
 }
 
 // 書き換え不要スキームの先頭1文字での粗フィルタ用

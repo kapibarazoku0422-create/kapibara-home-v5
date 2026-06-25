@@ -14,6 +14,7 @@ import { request } from 'undici';
 import { WebSocketServer, WebSocket } from 'ws';
 import { rewriteHtml, rewriteCss, encodeProxyUrl, decodeProxyUrl, PREFIX } from './rewrite.js';
 import { safeAcceptEncoding, deriveRefererOrigin, namespaceSetCookies, upstreamCookie, assertPublicHost, decodeBody } from './net.js';
+import { seal } from './seal.js';
 import { CLIENT_SCRIPT } from './client.js';
 import { HOME_PAGE } from './home.js';
 
@@ -142,6 +143,19 @@ const server = http.createServer(async (req, res) => {
     });
     return res.end(CLIENT_SCRIPT);
   }
+  // 封印エンドポイント: client.js が平文URLをトークン化してもらう
+  // （鍵はサーバのみ。実際の取得時にSSRFチェックが走るので発行自体は安全）
+  if (url.startsWith('/__seal?')) {
+    const u = new URL(url, 'http://x').searchParams.get('u');
+    res.writeHead(200, {
+      'content-type': 'text/plain; charset=utf-8',
+      'access-control-allow-origin': '*',
+      'cache-control': 'public, max-age=300',
+    });
+    if (!u || !/^https?:\/\//i.test(u)) return res.end('');
+    try { return res.end(seal(u)); } catch { return res.end(''); }
+  }
+
   // フォーム送信用リダイレクタ: /go?url=...
   if (url.startsWith('/go?')) {
     const q = new URL(url, 'http://localhost').searchParams.get('url');

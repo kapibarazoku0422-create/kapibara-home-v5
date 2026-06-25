@@ -46,7 +46,9 @@
       "Bash(npm run *)",
       "Bash(echo \"exit=$?\")",
       "Bash(PROXY_SECRET=supersecret123 node server.js)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w 'HTTP %{http_code}\\\\n' http://localhost:8080/p/__TRACKED_VAR__)",
+      "Bash(node --input-type=module -e \"import {encodeProxyUrl} from './rewrite.js'; process.stdout.write\\(encodeProxyUrl\\('https://example.com'\\).slice\\(3\\)\\)\")"
     ]
   }
 }

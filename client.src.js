@@ -2,48 +2,46 @@
  * カピバラproxy — client interceptor (browser side)
  * Copyright (c) 2026 kapibarazoku0422. All Rights Reserved.
  * Proprietary and confidential. See LICENSE. Watermark: KPBR-9f3a2c7e
+ *
+ * URLの封印(暗号化)はサーバのみが行う。ブラウザは平文URLを /__seal に渡して
+ * トークンを受け取る（結果はキャッシュ）。鍵はブラウザに存在しない。
  */
 (function(){
   var PREFIX='/p/';
   var me=document.currentScript;
   var BASE=(me&&me.getAttribute('data-base'))||location.href;
 
-  // UTF-8対応 Base64url（ASCII高速パス + メモ化）
-  var ASCII=/^[\x00-\x7F]*$/;
-  var encCache=new Map(), decCache=new Map();
-  function b64enc(s){
-    var hit=encCache.get(s); if(hit!==undefined) return hit;
-    var bin=ASCII.test(s)?s:unescape(encodeURIComponent(s));
-    var r=btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    if(encCache.size>2000) encCache.clear();
-    encCache.set(s,r); return r;
-  }
-  function b64dec(s){
-    var hit=decCache.get(s); if(hit!==undefined) return hit;
-    var r=null;
+  // 平文絶対URL -> 封印トークン（サーバに問い合わせ、同期XHR + キャッシュ）
+  var sealCache=new Map();
+  function sealViaServer(abs){
+    var hit=sealCache.get(abs); if(hit!==undefined) return hit;
+    var token=null;
     try{
-      var t=s.replace(/-/g,'+').replace(/_/g,'/');
-      while(t.length%4) t+='=';
-      var bin=atob(t);
-      r=ASCII.test(bin)?bin:decodeURIComponent(escape(bin));
-    }catch(e){ r=null; }
-    if(decCache.size>2000) decCache.clear();
-    decCache.set(s,r); return r;
+      var x=new XMLHttpRequest();
+      x.open('GET','/__seal?u='+encodeURIComponent(abs),false); // 同期。結果はキャッシュされるので実質1回
+      x.send();
+      if(x.status===200 && x.responseText) token=x.responseText;
+    }catch(e){}
+    if(sealCache.size>3000) sealCache.clear();
+    sealCache.set(abs,token); return token;
   }
 
-  function toOriginal(u){
-    if(u==null) return null;
-    u=''+u;
-    var pfx=location.origin+PREFIX;
-    if(u.indexOf(pfx)===0){ var d=b64dec(u.slice(pfx.length).replace(/[?#].*$/,'')); if(d) return d; }
-    if(u.indexOf(PREFIX)===0){ var d2=b64dec(u.slice(PREFIX.length).replace(/[?#].*$/,'')); if(d2) return d2; }
+  function isProxied(u){
+    return u.indexOf(location.origin+PREFIX)===0 || u.indexOf(PREFIX)===0;
+  }
+  function toAbs(u){
+    if(u==null) return null; u=''+u;
     if(/^(data:|blob:|javascript:|mailto:|tel:|about:|#)/i.test(u)) return null;
     try{ return new URL(u, BASE).href; }catch(e){ return null; }
   }
   function toProxy(u){
-    var abs=toOriginal(u);
-    if(abs==null) return u;
-    return PREFIX+b64enc(abs);
+    if(u==null) return u;
+    var s=''+u;
+    if(isProxied(s)) return s;            // 既に封印済み
+    var abs=toAbs(s);
+    if(abs==null) return u;               // data:等はそのまま
+    var t=sealViaServer(abs);
+    return t? PREFIX+t : u;               // 封印失敗時は素のまま
   }
   window.__toProxy=toProxy;
 
@@ -62,7 +60,10 @@
   // XHR
   var _open=XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open=function(m,u){
-    try{ u=toProxy(u); }catch(e){}
+    try{
+      // /__seal 自身は変換しない（無限ループ防止）
+      if((''+u).indexOf('/__seal?')===-1) u=toProxy(u);
+    }catch(e){}
     return _open.apply(this,[m,u].concat([].slice.call(arguments,2)));
   };
 
@@ -71,10 +72,13 @@
   if(_WS){
     var WSProxy=function(url,protocols){
       try{
-        var abs=toOriginal(url);
+        var abs=toAbs(url);
         if(abs){
-          var scheme=location.protocol==='https:'?'wss:':'ws:';
-          url=scheme+'//'+location.host+PREFIX+b64enc(abs);
+          var t=sealViaServer(abs);
+          if(t){
+            var scheme=location.protocol==='https:'?'wss:':'ws:';
+            url=scheme+'//'+location.host+PREFIX+t;
+          }
         }
       }catch(e){}
       return protocols!==undefined?new _WS(url,protocols):new _WS(url);
